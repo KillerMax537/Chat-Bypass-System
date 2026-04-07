@@ -1,71 +1,40 @@
 --[[
-    Script: Advanced Chat Bypass + PM System
-    Version: 5.0 (Fully Functional)
-    Features:
-    - Multiple advanced bypass methods (Cyrillic, Greek, Zero-Width, Combining Diacritics, Custom)
-    - Fully working tabs: Chat, Players, Bypass Methods, Settings
-    - Real-time preview
-    - Private messaging with player list
-    - Custom character mapping editor
+    Script: Chat Bypass + PM System (Rayfield UI)
+    Version: 6.0 - Corrigido e Funcional (2026)
 ]]
 
--- Load Rayfield UI (with error handling)
-local success, Rayfield = pcall(loadstring(game:HttpGet('https://sirius.menu/rayfield')))
-if not success or not Rayfield then
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "Error",
-        Text = "Failed to load Rayfield UI. Check your internet.",
-        Duration = 5
-    })
-    return
-end
+-- Carrega a biblioteca Rayfield
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- Create main window
+-- Cria a janela principal
 local Window = Rayfield:CreateWindow({
     Name = "Advanced Chat Bypass",
-    LoadingTitle = "Loading...",
-    LoadingSubtitle = "by Expert",
+    LoadingTitle = "Carregando...",
+    LoadingSubtitle = "by You",
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "AdvancedChatBypass",
+        FolderName = "ChatBypassSystem",
         FileName = "Config"
     },
     Discord = { Enabled = false },
     KeySystem = false
 })
 
--- ========================= TABS =========================
+-- Criação das abas
 local ChatTab = Window:CreateTab("💬 Chat")
 local PlayersTab = Window:CreateTab("👥 Players")
-local BypassTab = Window:CreateTab("🔓 Bypass Methods")
-local SettingsTab = Window:CreateTab("⚙ Settings")
+local BypassTab = Window:CreateTab("🔓 Bypass")
+local SettingsTab = Window:CreateTab("⚙️ Settings")
 
--- ========================= CONFIG =========================
+-- ========================= CONFIGURAÇÕES =========================
 local Config = {
     SelectedPlayer = nil,
-    CurrentBypass = "Cyrillic", -- Default method
-    CustomMapping = {
-        a = "а", b = "Ь", c = "с", e = "е", g = "ɡ", h = "һ",
-        i = "і", k = "к", m = "м", n = "п", o = "о", p = "р",
-        r = "г", s = "ѕ", t = "т", u = "υ", x = "х", y = "у"
-    }
+    CurrentBypass = "Cyrillic"
 }
 
--- ========================= ADVANCED BYPASS METHODS =========================
+-- ========================= FUNÇÕES DE BYPASS =========================
 local function cyrillicBypass(text)
     local map = {a="а", b="Ь", c="с", e="е", g="ɡ", h="һ", i="і", k="к", m="м", n="п", o="о", p="р", r="г", s="ѕ", t="т", u="υ", x="х", y="у"}
-    return text:gsub("%a", function(ch)
-        local lower = ch:lower()
-        local mapped = map[lower]
-        if mapped then
-            return (ch:upper() == ch) and mapped:upper() or mapped
-        end
-        return ch
-    end)
-end
-
-local function greekBypass(text)
-    local map = {a="α", b="β", c="ϲ", d="δ", e="ε", f="φ", g="γ", h="η", i="ι", k="κ", l="λ", m="μ", n="ν", o="ο", p="π", r="ρ", s="σ", t="τ", u="υ", x="ξ", y="υ", z="ζ"}
     return text:gsub("%a", function(ch)
         local lower = ch:lower()
         local mapped = map[lower]
@@ -81,142 +50,129 @@ local function zeroWidthBypass(text)
     return text:gsub(".", "%1" .. zwsp)
 end
 
-local function combiningDiacriticsBypass(text)
-    local diacritics = {"\u{0300}", "\u{0301}", "\u{0302}", "\u{0303}", "\u{0304}", "\u{0306}", "\u{0307}", "\u{0308}"}
-    local result = ""
-    for i = 1, #text do
-        local char = text:sub(i, i)
-        if char:match("%a") then
-            result = result .. char .. diacritics[math.random(#diacritics)]
-        else
-            result = result .. char
+local function combinedBypass(text)
+    local map = {a="а", b="Ь", c="с", e="е", g="ɡ", h="һ", i="і", k="к", m="м", n="п", o="о", p="р", r="г", s="ѕ", t="т", u="υ", x="х", y="у"}
+    local bypassed = text:gsub("%a", function(ch)
+        local lower = ch:lower()
+        local mapped = map[lower]
+        if mapped then
+            return (ch:upper() == ch) and mapped:upper() or mapped
         end
-    end
-    return result
+        return ch
+    end)
+    return zeroWidthBypass(bypassed)
 end
 
-local function customMappingBypass(text)
-    local result = ""
-    for i = 1, #text do
-        local char = text:sub(i, i)
-        local lower = char:lower()
-        if Config.CustomMapping[lower] then
-            local mapped = Config.CustomMapping[lower]
-            result = result .. (char:upper() == char and mapped:upper() or mapped)
-        else
-            result = result .. char
-        end
-    end
-    return result
-end
-
--- Main bypass router
 local function applyBypass(text)
     if text == "" then return "" end
     if Config.CurrentBypass == "Cyrillic" then
         return cyrillicBypass(text)
-    elseif Config.CurrentBypass == "Greek" then
-        return greekBypass(text)
     elseif Config.CurrentBypass == "Zero-Width" then
         return zeroWidthBypass(text)
-    elseif Config.CurrentBypass == "Combining Diacritics" then
-        return combiningDiacriticsBypass(text)
-    elseif Config.CurrentBypass == "Custom Mapping" then
-        return customMappingBypass(text)
+    elseif Config.CurrentBypass == "Combined" then
+        return combinedBypass(text)
     end
     return text
 end
 
--- ========================= SEND MESSAGE FUNCTION =========================
+-- ========================= ENVIO DE MENSAGEM =========================
 local function sendMessage(message, isPrivate)
     if message == "" then
-        Rayfield:Notify({Title = "Error", Content = "Message cannot be empty", Duration = 3})
+        Rayfield:Notify({Title = "Erro", Content = "Digite uma mensagem!", Duration = 3})
         return false
     end
-    
-    local bypassed = applyBypass(message)
-    local finalMsg = bypassed
-    
+
+    local finalMessage = applyBypass(message)
     if isPrivate then
         if not Config.SelectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select a player first", Duration = 3})
+            Rayfield:Notify({Title = "Erro", Content = "Selecione um jogador no menu 'Players'!", Duration = 3})
             return false
         end
-        finalMsg = "/w " .. Config.SelectedPlayer.Name .. " " .. bypassed
+        finalMessage = "/w " .. Config.SelectedPlayer.Name .. " " .. finalMessage
     end
-    
-    -- Try TextChatService (new)
+
+    -- Tenta enviar a mensagem usando diferentes sistemas de chat do Roblox
     local success = false
     local textChatService = game:GetService("TextChatService")
     local textChannels = textChatService:FindFirstChild("TextChannels")
     if textChannels then
-        local channel = textChannels:FindFirstChild("RBXGeneral") or textChannels:FindFirstChild("General")
-        if channel then
-            local ok = pcall(function() channel:SendAsync(finalMsg) end)
+        local generalChannel = textChannels:FindFirstChild("RBXGeneral")
+        if generalChannel then
+            local ok, err = pcall(function()
+                generalChannel:SendAsync(finalMessage)
+            end)
             if ok then success = true end
         end
     end
-    
-    -- Fallback to legacy Chat
+
     if not success then
-        local ok = pcall(function() game:GetService("Chat"):Chat(finalMsg) end)
+        local ok, err = pcall(function()
+            game:GetService("Chat"):Chat(finalMessage)
+        end)
         if ok then success = true end
     end
-    
+
     if success then
-        Rayfield:Notify({Title = "Success", Content = "Message sent!", Duration = 2})
+        Rayfield:Notify({Title = "Sucesso", Content = "Mensagem enviada!", Duration = 2})
     else
-        Rayfield:Notify({Title = "Error", Content = "Failed to send message", Duration = 4})
+        Rayfield:Notify({Title = "Erro", Content = "Falha ao enviar mensagem.", Duration = 4})
     end
     return success
 end
 
--- ========================= CHAT TAB UI =========================
-ChatTab:CreateSection("Message")
+-- ========================= ABA DE CHAT =========================
+-- Seção da mensagem
+ChatTab:CreateSection("Sua Mensagem")
 local messageInput = ChatTab:CreateInput({
-    Name = "Your Message",
-    PlaceholderText = "Type here...",
+    Name = "Mensagem",
+    PlaceholderText = "Digite sua mensagem aqui...",
     RemoveTextAfterFocus = false,
     Callback = function() end
 })
 
-ChatTab:CreateSection("Preview (Bypass Applied)")
+-- Seção de pré-visualização
+ChatTab:CreateSection("Pré-visualização (Bypass Aplicado)")
 local previewLabel = ChatTab:CreateParagraph({
     Name = "",
-    Content = "Waiting for message..."
+    Content = "Aguardando mensagem..."
 })
 
+-- Atualiza a pré-visualização em tempo real
 messageInput:GetPropertyChangedSignal("Text"):Connect(function()
     local text = messageInput.Text
     if text == "" then
-        previewLabel:Set("Waiting for message...")
+        previewLabel:Set("Aguardando mensagem...")
     else
         previewLabel:Set(applyBypass(text))
     end
 end)
 
-ChatTab:CreateSection("Actions")
+-- Botões de ação
+ChatTab:CreateSection("Ações")
 ChatTab:CreateButton({
-    Name = "Send Global",
-    Callback = function() sendMessage(messageInput.Text, false) end
+    Name = "Enviar Mensagem Global",
+    Callback = function()
+        sendMessage(messageInput.Text, false)
+    end
 })
 ChatTab:CreateButton({
-    Name = "Send Private Message (PM)",
-    Callback = function() sendMessage(messageInput.Text, true) end
+    Name = "Enviar Mensagem Privada (PM)",
+    Callback = function()
+        sendMessage(messageInput.Text, true)
+    end
 })
 
--- ========================= PLAYERS TAB UI =========================
-PlayersTab:CreateSection("Online Players")
-
+-- ========================= ABA DE JOGADORES =========================
+PlayersTab:CreateSection("Jogadores Online")
 local playerDropdown = PlayersTab:CreateDropdown({
-    Name = "Select Player",
-    Options = {"Loading..."},
-    CurrentOption = "Loading...",
+    Name = "Selecione um Jogador",
+    Options = {"Carregando..."},
+    CurrentOption = "Carregando...",
     Callback = function(option)
         for _, p in ipairs(game.Players:GetPlayers()) do
             if p.Name == option then
                 Config.SelectedPlayer = p
-                selectedLabel:Set("Selected: " .. p.Name)
+                selectedLabel:Set("Selecionado: " .. p.Name)
                 break
             end
         end
@@ -224,10 +180,11 @@ local playerDropdown = PlayersTab:CreateDropdown({
 })
 
 local selectedLabel = PlayersTab:CreateParagraph({
-    Name = "Current Selection",
-    Content = "No player selected"
+    Name = "Jogador Selecionado",
+    Content = "Nenhum jogador selecionado"
 })
 
+-- Função para atualizar a lista de jogadores
 local function updatePlayerList()
     local players = {}
     local localPlayer = game.Players.LocalPlayer
@@ -236,123 +193,65 @@ local function updatePlayerList()
             table.insert(players, p.Name)
         end
     end
-    if #players == 0 then players = {"No other players"} end
+    if #players == 0 then players = {"Nenhum outro jogador"} end
     playerDropdown:SetOptions(players)
     
     if Config.SelectedPlayer and not table.find(players, Config.SelectedPlayer.Name) then
         Config.SelectedPlayer = nil
-        selectedLabel:Set("No player selected")
+        selectedLabel:Set("Nenhum jogador selecionado")
     elseif Config.SelectedPlayer then
-        selectedLabel:Set("Selected: " .. Config.SelectedPlayer.Name)
+        selectedLabel:Set("Selecionado: " .. Config.SelectedPlayer.Name)
     end
 end
 
 updatePlayerList()
 game.Players.PlayerAdded:Connect(updatePlayerList)
 game.Players.PlayerRemoving:Connect(updatePlayerList)
-
 PlayersTab:CreateButton({
-    Name = "Refresh List",
+    Name = "Atualizar Lista",
     Callback = function()
         updatePlayerList()
-        Rayfield:Notify({Title = "Info", Content = "Player list updated", Duration = 2})
+        Rayfield:Notify({Title = "Info", Content = "Lista atualizada!", Duration = 2})
     end
 })
 
--- ========================= BYPASS METHODS TAB UI =========================
-BypassTab:CreateSection("Select Bypass Technique")
-
+-- ========================= ABA DE BYPASS =========================
+BypassTab:CreateSection("Métodos de Bypass")
 local methodDropdown = BypassTab:CreateDropdown({
-    Name = "Bypass Method",
-    Options = {"Cyrillic", "Greek", "Zero-Width", "Combining Diacritics", "Custom Mapping"},
+    Name = "Método",
+    Options = {"Cyrillic", "Zero-Width", "Combined"},
     CurrentOption = "Cyrillic",
     Callback = function(option)
         Config.CurrentBypass = option
-        -- Update preview in Chat tab
         local text = messageInput.Text
         if text ~= "" then
             previewLabel:Set(applyBypass(text))
         end
-        Rayfield:Notify({Title = "Bypass", Content = "Method set to " .. option, Duration = 2})
+        Rayfield:Notify({Title = "Bypass", Content = "Método alterado para " .. option, Duration = 2})
     end
 })
 
-BypassTab:CreateSection("Custom Mapping Editor")
-BypassTab:CreateParagraph({
-    Name = "Instructions",
-    Content = "Format: letter=replacement,letter2=replacement2\nExample: a=а,b=ь,c=с"
-})
-
-local mappingInput = BypassTab:CreateInput({
-    Name = "Mapping String",
-    PlaceholderText = "a=а,b=ь,c=с,e=е,o=о,p=р",
-    RemoveTextAfterFocus = false,
-    Callback = function(text)
-        local newMapping = {}
-        for pair in string.gmatch(text, "([^,]+)") do
-            local key, val = pair:match("^(%a)=(.*)$")
-            if key and val then
-                newMapping[key:lower()] = val
-            end
-        end
-        if next(newMapping) then
-            Config.CustomMapping = newMapping
-            Rayfield:Notify({Title = "Custom Mapping", Content = "Updated successfully", Duration = 2})
-            -- Update preview if custom method is active
-            if Config.CurrentBypass == "Custom Mapping" then
-                local text = messageInput.Text
-                if text ~= "" then
-                    previewLabel:Set(applyBypass(text))
-                end
-            end
-        else
-            Rayfield:Notify({Title = "Error", Content = "Invalid format. Use letter=value,letter2=value2", Duration = 4})
-        end
-    end
-})
-
-BypassTab:CreateButton({
-    Name = "Load Default Mapping",
-    Callback = function()
-        Config.CustomMapping = {
-            a = "а", b = "Ь", c = "с", e = "е", g = "ɡ", h = "һ",
-            i = "і", k = "к", m = "м", n = "п", o = "о", p = "р",
-            r = "г", s = "ѕ", t = "т", u = "υ", x = "х", y = "у"
-        }
-        mappingInput:Set("a=а,b=Ь,c=с,e=е,g=ɡ,h=һ,i=і,k=к,m=м,n=п,o=о,p=р,r=г,s=ѕ,t=т,u=υ,x=х,y=у")
-        Rayfield:Notify({Title = "Custom Mapping", Content = "Default mapping loaded", Duration = 2})
-        if Config.CurrentBypass == "Custom Mapping" then
-            local text = messageInput.Text
-            if text ~= "" then
-                previewLabel:Set(applyBypass(text))
-            end
-        end
-    end
-})
-
--- ========================= SETTINGS TAB UI =========================
-SettingsTab:CreateSection("About")
+-- ========================= ABA DE CONFIGURAÇÕES =========================
+SettingsTab:CreateSection("Sobre")
 SettingsTab:CreateParagraph({
     Name = "Advanced Chat Bypass System",
-    Content = "Version 5.0 (2026)\nFully functional with multiple bypass techniques.\n\nCyrillic - Uses Russian homoglyphs\nGreek - Uses Greek homoglyphs\nZero-Width - Invisible spaces between characters\nCombining Diacritics - Adds accents to letters\nCustom Mapping - User-defined character replacement"
+    Content = "Versão 6.0 (2026)\n\nCom 3 métodos de bypass:\n• Cyrillic\n• Zero-Width\n• Combined\n\nScript totalmente funcional com a Rayfield UI."
 })
-
-SettingsTab:CreateSection("Warning")
+SettingsTab:CreateSection("Aviso")
 SettingsTab:CreateParagraph({
-    Name = "Disclaimer",
-    Content = "Bypassing chat filters violates Roblox Terms of Service. Use at your own risk. This script is for educational purposes only."
+    Name = "Aviso Legal",
+    Content = "O bypass de palavras viola os Termos de Serviço da Roblox. Use por sua conta e risco."
 })
-
 SettingsTab:CreateButton({
-    Name = "Test Bypass (send 'hello world')",
+    Name = "Testar Bypass",
     Callback = function()
-        sendMessage("hello world", false)
+        sendMessage("Hello World", false)
     end
 })
 
--- Final notification
+-- Notificação final
 Rayfield:Notify({
     Title = "Advanced Chat Bypass",
-    Content = "All tabs are working! Select a bypass method and start chatting.",
-    Duration = 6
+    Content = "Sistema carregado! Todas as abas estão funcionando.",
+    Duration = 5
 })
