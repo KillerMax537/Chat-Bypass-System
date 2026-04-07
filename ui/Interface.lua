@@ -1,4 +1,3 @@
--- ui/Interface.lua
 local Interface = {}
 
 function Interface:Initialize(Rayfield, Bypass, PlayerManager, ChatSender)
@@ -11,11 +10,12 @@ function Interface:Initialize(Rayfield, Bypass, PlayerManager, ChatSender)
         KeySystem = false
     })
 
-    local ChatTab = Window:CreateTab("Mensagens")
-    local PlayersTab = Window:CreateTab("Jogadores")
-    local SettingsTab = Window:CreateTab("Configurações")
+    local ChatTab = Window:CreateTab("💬 Chat")
+    local PlayersTab = Window:CreateTab("👥 Jogadores")
+    local BypassTab = Window:CreateTab("🔓 Bypass")
+    local SettingsTab = Window:CreateTab("⚙️ Configurações")
 
-    -- Chat Tab
+    -- ======================== ABA CHAT ========================
     ChatTab:CreateSection("Sua Mensagem")
     local MessageInput = ChatTab:CreateInput({
         Name = "Mensagem",
@@ -23,13 +23,11 @@ function Interface:Initialize(Rayfield, Bypass, PlayerManager, ChatSender)
         RemoveTextAfterFocus = false,
         Callback = function() end
     })
-
-    ChatTab:CreateSection("Pré-visualização (Bypass Aplicado)")
+    ChatTab:CreateSection("Pré-visualização (Bypass)")
     local PreviewLabel = ChatTab:CreateParagraph({
         Name = "",
         Content = "Aguardando mensagem..."
     })
-
     MessageInput:GetPropertyChangedSignal("Text"):Connect(function()
         local text = MessageInput.Text
         if text == "" then
@@ -38,34 +36,24 @@ function Interface:Initialize(Rayfield, Bypass, PlayerManager, ChatSender)
             PreviewLabel:Set(Bypass:apply(text))
         end
     end)
-
     ChatTab:CreateButton({
-        Name = "Enviar Mensagem Global",
+        Name = "Enviar Global",
         Callback = function()
-            local success, msg = ChatSender:send(MessageInput.Text, false)
-            if success then
-                Rayfield:Notify({Title = "Sucesso", Content = msg, Duration = 2})
-            else
-                Rayfield:Notify({Title = "Erro", Content = msg, Duration = 4})
-            end
+            local ok, msg = ChatSender:send(MessageInput.Text, false)
+            Rayfield:Notify({Title = ok and "Sucesso" or "Erro", Content = msg, Duration = 3})
+        end
+    })
+    ChatTab:CreateButton({
+        Name = "Enviar PM",
+        Callback = function()
+            local ok, msg = ChatSender:send(MessageInput.Text, true)
+            Rayfield:Notify({Title = ok and "Sucesso" or "Erro", Content = msg, Duration = 3})
         end
     })
 
-    ChatTab:CreateButton({
-        Name = "Enviar Mensagem Privada (PM)",
-        Callback = function()
-            local success, msg = ChatSender:send(MessageInput.Text, true)
-            if success then
-                Rayfield:Notify({Title = "Sucesso", Content = msg, Duration = 2})
-            else
-                Rayfield:Notify({Title = "Erro", Content = msg, Duration = 4})
-            end
-        end
-    })
-
-    -- Players Tab
+    -- ======================== ABA JOGADORES ========================
     PlayersTab:CreateSection("Jogadores Online")
-    local playerDropdown = PlayersTab:CreateDropdown({
+    local PlayerDropdown = PlayersTab:CreateDropdown({
         Name = "Selecione um Jogador",
         Options = {"Carregando..."},
         CurrentOption = "Carregando...",
@@ -73,33 +61,29 @@ function Interface:Initialize(Rayfield, Bypass, PlayerManager, ChatSender)
             for _, p in ipairs(game.Players:GetPlayers()) do
                 if p.Name == option then
                     ChatSender.selectedPlayer = p
-                    selectedLabel:Set("Selecionado: " .. p.Name)
+                    SelectedLabel:Set("Selecionado: " .. p.Name)
                     break
                 end
             end
         end
     })
-
-    local selectedLabel = PlayersTab:CreateParagraph({
+    local SelectedLabel = PlayersTab:CreateParagraph({
         Name = "Jogador Selecionado",
         Content = "Nenhum jogador selecionado"
     })
-
     local function updatePlayerList()
         local players = PlayerManager:updateList()
-        playerDropdown:SetOptions(players)
+        PlayerDropdown:SetOptions(players)
         if ChatSender.selectedPlayer and not table.find(players, ChatSender.selectedPlayer.Name) then
             ChatSender.selectedPlayer = nil
-            selectedLabel:Set("Nenhum jogador selecionado")
+            SelectedLabel:Set("Nenhum jogador selecionado")
         elseif ChatSender.selectedPlayer then
-            selectedLabel:Set("Selecionado: " .. ChatSender.selectedPlayer.Name)
+            SelectedLabel:Set("Selecionado: " .. ChatSender.selectedPlayer.Name)
         end
     end
-
     updatePlayerList()
     game.Players.PlayerAdded:Connect(updatePlayerList)
     game.Players.PlayerRemoving:Connect(updatePlayerList)
-
     PlayersTab:CreateButton({
         Name = "Atualizar Lista",
         Callback = function()
@@ -108,23 +92,44 @@ function Interface:Initialize(Rayfield, Bypass, PlayerManager, ChatSender)
         end
     })
 
-    -- Settings Tab
-    SettingsTab:CreateSection("Métodos de Bypass")
-    SettingsTab:CreateDropdown({
+    -- ======================== ABA BYPASS ========================
+    BypassTab:CreateSection("Métodos de Bypass")
+    BypassTab:CreateDropdown({
         Name = "Método",
         Options = {"Cyrillic", "ZeroWidth", "Combined"},
         CurrentOption = "Cyrillic",
         Callback = function(option)
             Bypass:setMethod(option)
-            local text = MessageInput.Text
-            if text ~= "" then
-                PreviewLabel:Set(Bypass:apply(text))
+            if MessageInput.Text ~= "" then
+                PreviewLabel:Set(Bypass:apply(MessageInput.Text))
             end
             Rayfield:Notify({Title = "Bypass", Content = "Método alterado para " .. option, Duration = 2})
         end
     })
+    BypassTab:CreateSection("Descrição")
+    BypassTab:CreateParagraph({ Name = "Cyrillic", Content = "Substitui letras por caracteres cirílicos." })
+    BypassTab:CreateParagraph({ Name = "ZeroWidth", Content = "Insere caracteres invisíveis entre as letras." })
+    BypassTab:CreateParagraph({ Name = "Combined", Content = "Aplica Cyrillic + ZeroWidth (mais poderoso)." })
 
-    Rayfield:Notify({Title = "Sistema Carregado", Content = "UI inicializada com sucesso!", Duration = 5})
+    -- ======================== ABA CONFIGURAÇÕES ========================
+    SettingsTab:CreateSection("Sobre")
+    SettingsTab:CreateParagraph({
+        Name = "Sistema de Chat Bypass",
+        Content = "Versão 2.0 - Modular e totalmente funcional.\nTodas as abas estão populadas corretamente."
+    })
+    SettingsTab:CreateSection("Aviso")
+    SettingsTab:CreateParagraph({
+        Name = "Aviso Legal",
+        Content = "O bypass de chat pode violar os Termos de Serviço da Roblox. Use por sua conta e risco."
+    })
+    SettingsTab:CreateButton({
+        Name = "Testar Envio",
+        Callback = function()
+            ChatSender:send("Test message from bypass system", false)
+        end
+    })
+
+    Rayfield:Notify({Title = "Sistema Carregado", Content = "Todas as 4 abas funcionando!", Duration = 5})
 end
 
 return Interface

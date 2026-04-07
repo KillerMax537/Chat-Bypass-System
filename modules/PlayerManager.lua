@@ -1,4 +1,3 @@
--- modules/PlayerManager.lua
 local PlayerManager = {}
 PlayerManager.players = {}
 
