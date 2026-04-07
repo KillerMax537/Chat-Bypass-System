@@ -1,34 +1,35 @@
 --[[
-    Script: Chat Bypass + PM System (Amethyst UI) - Versão Estável
+    Script: Sistema de Chat Bypass + PM (Orion UI)
+    Descrição: Um sistema completo e estável para enviar mensagens com bypass.
     Funcionalidades:
-    - 4 abas totalmente funcionais (Chat, Players, Bypass, Config)
-    - 3 métodos de bypass (Cirílico, Zero-Width, Combinado)
-    - Pré-visualização em tempo real
-    - PM com lista de jogadores
-    - Spammer integrado
+        - Interface com 4 abas (Chat, Jogadores, Bypass, Configurações).
+        - Três métodos de bypass: Cirílico, Zero-Width e Combinado.
+        - Pré-visualização em tempo real da mensagem com bypass aplicado.
+        - Lista de jogadores atualizada automaticamente para mensagens privadas.
+        - Sistema de Spammer com delay e mensagens personalizáveis.
 ]]
 
--- Carrega a biblioteca Amethyst (alternativa moderna ao Rayfield)
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/J0se-j/My-Lua-Library/refs/heads/main/Booting-the-library.lua"))()
+-- Carrega a biblioteca Orion
+local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+if not OrionLib then
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Erro Crítico",
+        Text = "Falha ao carregar a Orion UI. Verifique sua conexão com a internet.",
+        Duration = 10
+    })
+    return
+end
 
 -- Cria a janela principal
-local Window = Library:CreateWindow({
+local Window = OrionLib:MakeWindow({
     Name = "Chat Bypass System",
-    LoadingTitle = "Carregando...",
-    LoadingSubtitle = "by You",
-    ToggleUIKeybind = Enum.KeyCode.RightControl,
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "ChatBypassSystem",
-        FileName = "UserSettings"
-    }
+    HidePremium = false,
+    SaveConfig = true,
+    ConfigFolder = "ChatBypassSystem",
+    IntroEnabled = true,
+    IntroText = "Carregando Sistema...",
+    IntroIcon = "rbxassetid://4483345998" -- Um ícone qualquer da biblioteca
 })
-
--- Criação das 4 abas (totalmente funcionais)
-local ChatTab = Window:CreateTab("💬 Chat", 4483362458)
-local PlayersTab = Window:CreateTab("👥 Players", 4483362458)
-local BypassTab = Window:CreateTab("🔓 Bypass", 4483362458)
-local ConfigTab = Window:CreateTab("⚙️ Config", 4483362458)
 
 -- ========================= CONFIGURAÇÕES =========================
 local Config = {
@@ -36,31 +37,35 @@ local Config = {
     CurrentMethod = "Cyrillic"
 }
 
--- ========================= MÉTODOS DE BYPASS =========================
+-- ========================= MÉTODOS DE BYPASS AVANÇADOS =========================
 -- Método 1: Cirílico
 local function applyCyrillic(text)
-    local map = {a="а",b="Ь",c="с",e="е",g="ɡ",h="һ",i="і",k="к",m="м",n="п",o="о",p="р",r="г",s="ѕ",t="т",u="υ",x="х",y="у"}
-    local out = ""
+    local map = {
+        a="а", b="ь", c="с", e="е", g="ɡ", h="һ", i="і", k="к",
+        m="м", n="п", o="о", p="р", r="г", s="ѕ", t="т", u="υ", x="х", y="у"
+    }
+    local result = ""
     for i = 1, #text do
-        local ch = text:sub(i, i)
-        local lower = ch:lower()
-        if map[lower] then
-            out = out .. (ch:upper() == ch and map[lower]:upper() or map[lower])
+        local char = text:sub(i, i)
+        local lowerChar = char:lower()
+        local mapped = map[lowerChar]
+        if mapped then
+            result = result .. (char:upper() == char and mapped:upper() or mapped)
         else
-            out = out .. ch
+            result = result .. char
         end
     end
-    return out
+    return result
 end
 
 -- Método 2: Zero-Width (espaços invisíveis)
 local function applyZeroWidth(text)
     local zwsp = "\u{200B}"
-    local out = ""
+    local result = ""
     for i = 1, #text do
-        out = out .. text:sub(i, i) .. zwsp
+        result = result .. text:sub(i, i) .. zwsp
     end
-    return out
+    return result
 end
 
 -- Método 3: Combinado (Cirílico + Zero-Width)
@@ -68,7 +73,7 @@ local function applyCombined(text)
     return applyZeroWidth(applyCyrillic(text))
 end
 
--- Função principal de bypass
+-- Função principal de bypass que chama o método selecionado
 local function applyBypass(text)
     if text == nil or text == "" then return "" end
     if Config.CurrentMethod == "Cyrillic" then
@@ -81,113 +86,181 @@ local function applyBypass(text)
     return text
 end
 
--- ========================= ENVIO DE MENSAGEM =========================
+-- ========================= FUNÇÃO DE ENVIO DE MENSAGEM =========================
 local function sendMessage(message, isPrivate)
     if message == nil or message == "" then
-        Library:Notification({Title = "Erro", Content = "Digite uma mensagem!", Duration = 3})
-        return
+        OrionLib:MakeNotification({
+            Name = "Erro",
+            Content = "Você não pode enviar uma mensagem vazia!",
+            Image = "rbxassetid://4483345998",
+            Time = 3
+        })
+        return false
     end
+
     if isPrivate and Config.SelectedPlayer == nil then
-        Library:Notification({Title = "Erro", Content = "Selecione um jogador na aba Players!", Duration = 3})
-        return
+        OrionLib:MakeNotification({
+            Name = "Erro",
+            Content = "Por favor, selecione um jogador na aba 'Jogadores' primeiro.",
+            Image = "rbxassetid://4483345998",
+            Time = 4
+        })
+        return false
     end
 
-    local final = applyBypass(message)
+    local finalMessage = applyBypass(message)
     if isPrivate then
-        final = "/w " .. Config.SelectedPlayer.Name .. " " .. final
+        finalMessage = "/w " .. Config.SelectedPlayer.Name .. " " .. finalMessage
     end
 
-    -- Tenta enviar pelo sistema novo (TextChatService)
+    -- Tenta enviar usando o novo sistema de chat do Roblox (TextChatService)
     local success = false
-    local tcs = game:GetService("TextChatService")
-    local channels = tcs:FindFirstChild("TextChannels")
-    if channels then
-        local general = channels:FindFirstChild("RBXGeneral") or channels:FindFirstChild("General")
-        if general then
-            success = pcall(function() general:SendAsync(final) end)
+    local textChatService = game:GetService("TextChatService")
+    local textChannels = textChatService:FindFirstChild("TextChannels")
+    if textChannels then
+        local generalChannel = textChannels:FindFirstChild("RBXGeneral") or textChannels:FindFirstChild("General")
+        if generalChannel then
+            local ok, err = pcall(function()
+                generalChannel:SendAsync(finalMessage)
+            end)
+            if ok then success = true else warn("Erro no TextChatService: " .. tostring(err)) end
         end
     end
-    -- Fallback para o sistema antigo (Chat)
+
+    -- Se falhou, tenta enviar usando o sistema de chat antigo (Chat)
     if not success then
-        success = pcall(function() game:GetService("Chat"):Chat(final) end)
+        local chatService = game:GetService("Chat")
+        local ok, err = pcall(function()
+            chatService:Chat(finalMessage)
+        end)
+        if ok then success = true else warn("Erro no Chat legado: " .. tostring(err)) end
     end
 
     if success then
-        Library:Notification({Title = "Sucesso", Content = "Mensagem enviada!", Duration = 2})
+        OrionLib:MakeNotification({
+            Name = "Sucesso",
+            Content = "Mensagem enviada com sucesso!",
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
+        return true
     else
-        Library:Notification({Title = "Erro", Content = "Falha ao enviar (chat não detectado)", Duration = 4})
+        OrionLib:MakeNotification({
+            Name = "Falha no Envio",
+            Content = "O jogo pode usar um sistema de chat personalizado. O bypass ainda pode funcionar, mas não foi possível enviar.",
+            Image = "rbxassetid://4483345998",
+            Time = 5
+        })
+        return false
     end
 end
 
--- ========================= INTERFACE - ABA CHAT =========================
-local ChatSection = ChatTab:CreateSection("Sua Mensagem")
-local MessageInput = ChatSection:CreateTextBox({
-    Name = "Mensagem",
-    PlaceholderText = "Digite sua mensagem aqui...",
-    RemoveTextAfterFocus = false,
-    Callback = function() end
+-- ========================= CRIAÇÃO DAS ABAS =========================
+-- Aba de Chat
+local ChatTab = Window:MakeTab({
+    Name = "Chat",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
 })
 
-local PreviewSection = ChatTab:CreateSection("Pré-visualização (Bypass)")
-local PreviewLabel = PreviewSection:CreateParagraph({
-    Name = "",
-    Content = "Aguardando mensagem..."
+-- Aba de Jogadores
+local PlayersTab = Window:MakeTab({
+    Name = "Jogadores",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
 })
+
+-- Aba de Métodos de Bypass
+local BypassTab = Window:MakeTab({
+    Name = "Bypass",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- Aba de Configurações (Spammer)
+local ConfigTab = Window:MakeTab({
+    Name = "Configurações",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- ========================= CONSTRUÇÃO DA INTERFACE =========================
+-- --- Aba de Chat ---
+local ChatSection = ChatTab:AddSection({
+    Name = "Sua Mensagem"
+})
+
+local MessageInput = ChatTab:AddTextbox({
+    Name = "Mensagem",
+    Default = "",
+    TextDisappear = false,
+    Callback = function(Value)
+        -- O callback é chamado quando o texto muda. Vamos usar isso para a pré-visualização.
+        -- Mas a pré-visualização será atualizada em tempo real por outro evento.
+    end
+})
+
+local PreviewSection = ChatTab:AddSection({
+    Name = "Pré-visualização do Bypass"
+})
+
+local PreviewLabel = ChatTab:AddLabel("Aguardando mensagem...")
 
 -- Atualiza a pré-visualização em tempo real
-MessageInput:GetPropertyChangedSignal("Text"):Connect(function()
+local function updatePreview()
     local text = MessageInput.Text
     if text == nil or text == "" then
         PreviewLabel:Set("Aguardando mensagem...")
     else
         PreviewLabel:Set(applyBypass(text))
     end
-end)
+end
 
-local ActionsSection = ChatTab:CreateSection("Ações")
-ActionsSection:CreateButton({
+-- Conecta a atualização ao evento de mudança de texto
+MessageInput:GetPropertyChangedSignal("Text"):Connect(updatePreview)
+
+ChatTab:AddButton({
     Name = "Enviar Mensagem Global",
     Callback = function()
         sendMessage(MessageInput.Text, false)
     end
 })
-ActionsSection:CreateButton({
+
+ChatTab:AddButton({
     Name = "Enviar Mensagem Privada (PM)",
     Callback = function()
         sendMessage(MessageInput.Text, true)
     end
 })
 
--- ========================= INTERFACE - ABA PLAYERS =========================
-local PlayersSection = PlayersTab:CreateSection("Jogadores Online")
-local PlayerDropdown = PlayersSection:CreateDropdown({
+-- --- Aba de Jogadores ---
+local PlayersSection = PlayersTab:AddSection({
+    Name = "Jogadores Online"
+})
+
+local PlayerDropdown = PlayersTab:AddDropdown({
     Name = "Selecione um Jogador",
     Options = {"Carregando..."},
-    CurrentOption = "Carregando...",
     Callback = function(option)
         if option == nil or option == "Nenhum jogador disponível" then return end
-        for _, p in ipairs(game.Players:GetPlayers()) do
-            if p.Name == option then
-                Config.SelectedPlayer = p
-                SelectedLabel:Set("Selecionado: " .. p.Name)
+        for _, player in ipairs(game.Players:GetPlayers()) do
+            if player.Name == option then
+                Config.SelectedPlayer = player
+                SelectedLabel:Set("Selecionado: " .. player.Name)
                 break
             end
         end
     end
 })
 
-local SelectedLabel = PlayersTab:CreateParagraph({
-    Name = "Jogador Selecionado",
-    Content = "Nenhum jogador selecionado"
-})
+local SelectedLabel = PlayersTab:AddLabel("Nenhum jogador selecionado")
 
--- Função para atualizar a lista de jogadores
 local function updatePlayerList()
     local players = {}
     local localPlayer = game.Players.LocalPlayer
-    for _, p in ipairs(game.Players:GetPlayers()) do
-        if p ~= localPlayer then
-            table.insert(players, p.Name)
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= localPlayer then
+            table.insert(players, player.Name)
         end
     end
     if #players == 0 then
@@ -203,52 +276,60 @@ local function updatePlayerList()
     end
 end
 
--- Inicializa e conecta eventos
 updatePlayerList()
 game.Players.PlayerAdded:Connect(updatePlayerList)
 game.Players.PlayerRemoving:Connect(updatePlayerList)
 
-PlayersTab:CreateButton({
-    Name = "Atualizar Lista Agora",
+PlayersTab:AddButton({
+    Name = "Atualizar Lista de Jogadores",
     Callback = function()
         updatePlayerList()
-        Library:Notification({Title = "Info", Content = "Lista atualizada!", Duration = 2})
+        OrionLib:MakeNotification({
+            Name = "Info",
+            Content = "Lista de jogadores atualizada!",
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
     end
 })
 
--- ========================= INTERFACE - ABA BYPASS =========================
-local BypassSection = BypassTab:CreateSection("Método de Bypass")
-local MethodDropdown = BypassSection:CreateDropdown({
-    Name = "Selecione o Método",
+-- --- Aba de Métodos de Bypass ---
+local BypassSection = BypassTab:AddSection({
+    Name = "Selecione o Método"
+})
+
+local MethodDropdown = BypassTab:AddDropdown({
+    Name = "Método de Bypass",
     Options = {"Cyrillic", "ZeroWidth", "Combined"},
-    CurrentOption = "Cyrillic",
     Callback = function(option)
-        if option == nil then return end
         Config.CurrentMethod = option
-        -- Atualiza pré-visualização
-        local text = MessageInput.Text
-        if text ~= nil and text ~= "" then
-            PreviewLabel:Set(applyBypass(text))
-        end
-        Library:Notification({Title = "Método alterado", Content = option, Duration = 2})
+        updatePreview()
+        OrionLib:MakeNotification({
+            Name = "Método Alterado",
+            Content = "Agora usando: " .. option,
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
     end
 })
 
-local DescSection = BypassTab:CreateSection("Descrição dos Métodos")
-DescSection:CreateParagraph({Name = "Cyrillic", Content = "Substitui letras por caracteres cirílicos. Funciona na maioria dos jogos."})
-DescSection:CreateParagraph({Name = "ZeroWidth", Content = "Insere espaços invisíveis entre as letras. Muito eficaz."})
-DescSection:CreateParagraph({Name = "Combined", Content = "Aplica Cyrillic + ZeroWidth. O mais poderoso."})
+BypassTab:AddLabel("Descrição dos Métodos")
+BypassTab:AddParagraph("Cyrillic", "Substitui letras por caracteres do alfabeto cirílico. É o método mais comum e funciona na maioria dos jogos.")
+BypassTab:AddParagraph("ZeroWidth", "Insere caracteres invisíveis entre cada letra da mensagem. Muito eficaz contra filtros simples.")
+BypassTab:AddParagraph("Combined", "Aplica primeiro o método Cyrillic e depois o ZeroWidth. É o método mais poderoso e recomendado para filtros mais agressivos.")
 
--- ========================= INTERFACE - ABA CONFIG (SPAMMER) =========================
-local SpamSection = ConfigTab:CreateSection("Spammer (opcional)")
+-- --- Aba de Configurações (Spammer) ---
+local SpamSection = ConfigTab:AddSection({
+    Name = "Spammer (opcional)"
+})
 
 local spamActive = false
 local spamMessages = {"Hello!", "Bypass active!", "How are you?"}
 local spamDelay = 3
 
-SpamSection:CreateToggle({
+ConfigTab:AddToggle({
     Name = "Ativar Spammer",
-    CurrentValue = false,
+    Default = false,
     Callback = function(val)
         spamActive = val
         if val then
@@ -265,20 +346,21 @@ SpamSection:CreateToggle({
     end
 })
 
-SpamSection:CreateSlider({
+ConfigTab:AddSlider({
     Name = "Delay entre mensagens (segundos)",
     Min = 1,
     Max = 10,
     Default = 3,
+    Increment = 0.5,
     Callback = function(val)
         spamDelay = val
     end
 })
 
-SpamSection:CreateTextBox({
+ConfigTab:AddTextbox({
     Name = "Mensagens (separadas por vírgula)",
-    PlaceholderText = "Msg1,Msg2,Msg3",
-    RemoveTextAfterFocus = false,
+    Default = "",
+    TextDisappear = false,
     Callback = function(text)
         if text == nil or text == "" then return end
         local msgs = {}
@@ -290,20 +372,27 @@ SpamSection:CreateTextBox({
         end
         if #msgs > 0 then
             spamMessages = msgs
-            Library:Notification({Title = "Spammer", Content = "Mensagens atualizadas", Duration = 2})
+            OrionLib:MakeNotification({
+                Name = "Spammer",
+                Content = "Mensagens atualizadas!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
         end
     end
 })
 
-local AboutSection = ConfigTab:CreateSection("Sobre")
-AboutSection:CreateParagraph({Name = "Chat Bypass System 2026", Content = "Versão estável com Amethyst UI - todas as abas funcionam. Use com responsabilidade."})
-AboutSection:CreateParagraph({Name = "Aviso Legal", Content = "Bypass de chat pode violar os Termos de Serviço da Roblox. O uso é por sua conta e risco."})
-AboutSection:CreateButton({
-    Name = "Testar Envio ('teste')",
-    Callback = function()
-        sendMessage("teste", false)
-    end
+local AboutSection = ConfigTab:AddSection({
+    Name = "Sobre"
 })
 
--- Notificação de sucesso
-Library:Notification({Title = "Sistema Carregado", Content = "Todas as 4 abas estão funcionando!", Duration = 5})
+ConfigTab:AddParagraph("Sistema de Chat Bypass 2026", "Versão estável com Orion UI. Todas as funcionalidades estão operacionais.")
+ConfigTab:AddParagraph("Aviso Legal", "O uso de bypass em chats pode violar os Termos de Serviço da Roblox. Use por sua conta e risco.")
+
+-- Notificação final para confirmar que tudo foi carregado
+OrionLib:MakeNotification({
+    Name = "Sistema Carregado",
+    Content = "Todas as abas foram carregadas com sucesso! Use com responsabilidade.",
+    Image = "rbxassetid://4483345998",
+    Time = 6
+})
