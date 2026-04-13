@@ -191,9 +191,12 @@ local CHAT_PATTERNS = {
 }
 
 -- Patterns that are almost certainly traps – AVOID
+-- Uses word-boundary-style matching to reduce false positives on innocent
+-- substrings (e.g. "Moderation", "Anticipation", "Checkpoint").
 local TRAP_PATTERNS = {
-    "Kick", "Ban", "Detect", "Anti", "Exploit", "Hack", "Script", "Logger",
-    "Punish", "Flag", "Report", "Admin", "Mod", "Secure", "Verify", "Check"
+    "Kick", "Ban", "Detect", "AntiExploit", "AntiCheat", "AntiHack",
+    "Exploit", "Hack", "Script", "Logger",
+    "Punish", "Flag", "Report", "Admin", "Moderate", "Secure", "Verify"
 }
 
 function BackdoorScanner.new(bypassEngine)
@@ -209,17 +212,22 @@ end
 -- Score a remote based on how likely it is to be a chat backdoor (higher = better)
 local function scoreRemote(remote)
     local score = 0
+    local remoteName = remote.Name:lower()
     local fullPath = remote:GetFullName():lower()
     
+    -- Chat-pattern matching on full path (substring is fine here — we want broad recall)
     for _, pattern in ipairs(CHAT_PATTERNS) do
         if fullPath:find(pattern:lower()) then
             score = score + 50
         end
     end
     
+    -- Trap-pattern matching on the remote's own name only (not the full path)
+    -- to avoid penalising remotes that simply live under a folder whose name
+    -- happens to contain a trap substring.
     for _, pattern in ipairs(TRAP_PATTERNS) do
-        if fullPath:find(pattern:lower()) then
-            score = score - 1000
+        if remoteName:find(pattern:lower()) then
+            score = score - 200
         end
     end
     
@@ -381,6 +389,9 @@ function BackdoorScanner:ForceSay(player, message)
     end
 
     local processed = self.Bypass:Process(message)
+    -- Escape percent signs so string.format does not treat them as specifiers
+    local safeProcessed = processed:gsub('%%', '%%%%'):gsub('"', '\\"')
+    local safePlayerName = player.Name:gsub('%%', '%%%%')
     local scriptToRun = string.format([[
         local target = game:GetService("Players"):FindFirstChild("%s")
         if target then
@@ -406,7 +417,7 @@ function BackdoorScanner:ForceSay(player, message)
                 end
             end
         end
-    ]], player.Name, processed:gsub('"', '\\"'))
+    ]], safePlayerName, safeProcessed)
 
     local success, err = self:Execute(scriptToRun)
     if not success then
